@@ -5,6 +5,7 @@ import urllib
 import urllib.parse
 import urllib.request
 from colorama import Fore
+import sys
 
 headers = {
     "User-Agent": "MonAgentUtilisateur/1.0",  
@@ -23,10 +24,14 @@ DBMS_ERRORS = {
 }
 
 def _retrieve_content(url):
+    try:
+        response = urllib.request.urlopen(url)
+        retval = response.read().decode('utf-8')
+        return retval                        # RETVAL = return value = html
+    except:
+        print("Impossible de recuperer le code html")
+        sys.exit(1)
 
-    response = urllib.request.urlopen(url)
-    retval = response.read().decode('utf-8')
-    return retval                        # RETVAL = return value = html
 
 def scan_page(url):
     original= None
